@@ -1,6 +1,6 @@
 {
   "name": "prettier-plugin-yatl",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "dependencies": {},
   "devDependencies": {
     "prettier": "3.9.6"
