@@ -2,6 +2,14 @@
 
 <!-- next-version-placeholder -->
 
+## v0.2.0 (2026-09-11)
+
+### Feature
+* **cli:** add executable YATL formatter command
+
+### Documentation
+* **readme:** document CLI usage and configuration
+
 ## v0.1.1 (2026-09-11)
 
 ## Chore
