@@ -29,8 +29,7 @@ perf = "Performance"
 docs = "Documentation"
 
 [tool.vommit.pypi]
-enabled = true
-use_keyring = true
+enabled = false
 
 [tool.vommit.commands]
 clean = "rm -rf ./dist"
