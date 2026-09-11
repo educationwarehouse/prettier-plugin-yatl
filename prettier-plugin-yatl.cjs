@@ -61,7 +61,7 @@
 
 const htmlPlugin = require("prettier/plugins/html");
 const { builders } = require("prettier/doc");
-const { line, fill, join } = builders;
+const { line, hardline, fill } = builders;
 
 // ---------------------------------------------------------------------
 // YATL delimiter matching -- bug-compatible with yatl/template.py's own
@@ -102,8 +102,73 @@ function unmask(word) {
   return word.replace(SENTINEL_CHARS_RE, (ch) => SENTINEL_TO_WS[ch]);
 }
 
-function yatlAwareSplit(value) {
-  return maskYatlInternalWhitespace(value).split(HTML_WS_SPLIT_RE).map(unmask);
+// Split, but keeping the whitespace run that separated each pair of
+// words, because whether that run contained a newline is what decides
+// between a soft `line` and a forced break below.
+function yatlAwareSplitWithSeparators(value) {
+  const masked = maskYatlInternalWhitespace(value);
+  const words = [];
+  const separators = [];
+  const re = new RegExp(HTML_WS_SPLIT_RE.source, "g");
+  let last = 0;
+  let match;
+  while ((match = re.exec(masked)) !== null) {
+    words.push(unmask(masked.slice(last, match.index)));
+    separators.push(match[0]); // whitespace only -- nothing to unmask
+    last = match.index + match[0].length;
+  }
+  words.push(unmask(masked.slice(last)));
+  return { words, separators };
+}
+
+// ---------------------------------------------------------------------
+// Statement tags vs. output tags.
+//
+// YATL has two kinds of tag: `[[=expr]]` (and `{{=expr}}`) *outputs* a
+// value and is genuinely inline -- it belongs in the flow of the text
+// around it, exactly like a word. Everything else is a *statement*:
+// `[[if ...:]]`, `[[for ...:]]`, `[[else:]]`, `[[pass]]`, `[[end]]`,
+// `[[block x]]`, `[[include]]`, `[[extend ...]]`, `[[def ...]]`, plain
+// Python lines, etc. Those read as lines of code, and reflowing several
+// of them onto one line (`[[pass]] [[else:]] [[for c in x:]]`) destroys
+// the only structure the template has.
+//
+// So: a whitespace run that contained a newline in the source is kept as
+// a real line break whenever a statement tag sits on either side of it.
+// The rule is deliberately source-driven rather than tag-driven, so an
+// intentionally inline construct -- `[[if x:]]a[[else:]]b[[pass]]`
+// written on one line -- is left on one line, which is what the author
+// asked for by writing it that way.
+// ---------------------------------------------------------------------
+
+function isStatementTag(tag) {
+  const body = tag.slice(2, -2).trim();
+  return body.length > 0 && !body.startsWith("=");
+}
+
+function startsWithStatementTag(word) {
+  const first = word.match(YATL_TAG_RE);
+  return first !== null && first.index === 0 && isStatementTag(first[0]);
+}
+
+function endsWithStatementTag(word) {
+  const matches = [...word.matchAll(YATL_TAG_RE_G)];
+  const last = matches.at(-1);
+  return last !== undefined && last.index + last[0].length === word.length && isStatementTag(last[0]);
+}
+
+const NEWLINE_RE = /\n/g;
+
+function separatorDoc(separator, before, after) {
+  if (!separator.includes("\n")) {
+    return line;
+  }
+  if (!endsWithStatementTag(before) && !startsWithStatementTag(after)) {
+    return line;
+  }
+  // A blank line the author put between two statements is structure too
+  // (it separates branches/blocks); keep exactly one.
+  return separator.match(NEWLINE_RE).length > 1 ? [hardline, hardline] : hardline;
 }
 
 // ---------------------------------------------------------------------
@@ -332,18 +397,31 @@ function printClosingTagSuffix(node, options) {
 }
 
 // ---------------------------------------------------------------------
-// The one actual behavior change: same shape as prettier's own
-// `case "text":` branch in printer-html.js, with `getTextValueParts()`
-// replaced by `yatlAwareSplit()`. Only reached for text nodes that (a)
-// contain a YATL tag and (b) aren't whitespace-sensitive (pre/textarea
-// content is already verbatim/untouched by prettier -- never split at
-// all, so it's already safe and this function is never called for it).
+// The actual behavior change: same shape as prettier's own `case "text":`
+// branch in printer-html.js, with `getTextValueParts()` replaced by a
+// YATL-aware split -- one that keeps whole `[[...]]`/`{{...}}` spans as
+// single words, and that forces (rather than merely allows) a break at a
+// source newline next to a statement tag. Only reached for text nodes
+// that (a) contain a YATL tag and (b) aren't whitespace-sensitive
+// (pre/textarea content is already verbatim/untouched by prettier --
+// never split at all, so it's already safe and this is never called for
+// it).
 // ---------------------------------------------------------------------
 
 function printYatlAwareText(node, options) {
   const prefix = printOpeningTagPrefix(node, options);
   const suffix = printClosingTagSuffix(node, options);
-  const printed = join(line, yatlAwareSplit(node.value));
+  const { words, separators } = yatlAwareSplitWithSeparators(node.value);
+
+  // fill() wants a flat [content, whitespace, content, whitespace, ...].
+  const printed = [];
+  for (const [i, word] of words.entries()) {
+    if (i > 0) {
+      printed.push(separatorDoc(separators[i - 1], words[i - 1], word));
+    }
+    printed.push(word);
+  }
+
   printed[0] = [prefix, printed[0]];
   printed.push([printed.pop(), suffix]);
   return fill(printed);

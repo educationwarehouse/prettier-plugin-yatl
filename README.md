@@ -46,6 +46,8 @@ PyCharm's native HTML formatter does not load Prettier plugins. Use PyCharm's Pr
 
 The plugin reuses Prettier's HTML parser and printer. For ordinary text nodes containing a YATL delimiter, it temporarily replaces whitespace inside `[[...]]` and `{{...}}` spans with non-whitespace sentinel characters. Prettier then cannot wrap inside the span, and the original whitespace is restored afterwards.
 
+It also keeps statement tags on their own lines. A tag other than `[[=expr]]`/`{{=expr}}` -- `[[if ...:]]`, `[[for ...:]]`, `[[else:]]`, `[[pass]]`, `[[end]]`, `[[block ...]]`, `[[include]]`, plain Python, and so on -- reads as a line of code, so a line break the author wrote next to one is preserved instead of being reflowed away (a single blank line between two of them is kept as well). The rule keys on the source, not on the tag: an intentionally inline construct such as `[[if x:]]yes[[else:]]no[[pass]]` written on one line stays on one line, as do statement tags used inside attribute values.
+
 All other formatting remains Prettier's responsibility, including tag-boundary whitespace, attributes, comments, and whitespace-sensitive elements such as `<pre>` and `<textarea>`. A small part of Prettier's internal HTML tag-printing logic is vendored because those whitespace markers are not part of its public plugin API.
 
 Delimiter matching follows YATL's non-greedy parser behavior. The plugin does not validate or execute YATL expressions.
