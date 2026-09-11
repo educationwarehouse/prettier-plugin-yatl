@@ -2,6 +2,11 @@
 
 <!-- next-version-placeholder -->
 
+## v0.3.0 (2026-09-11)
+
+### Feature
+* **formatting:** preserve YATL statement tag line breaks
+
 ## v0.2.0 (2026-09-11)
 
 ### Feature
